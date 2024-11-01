@@ -1,4 +1,4 @@
-# Computer-Science-cours
+# Computer-Science-course 
 Computer Science cours
 
 ## project 
