@@ -1,0 +1,113 @@
+#include <iostream>
+#include <memory>
+#include <utility>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
+
+class UniversalPrinter {
+private:
+    struct BaseHolder {
+        virtual ~BaseHolder() = default;
+        virtual void print(std::ostream& os) const = 0;
+        virtual std::unique_ptr<BaseHolder> clone() const = 0;
+    };
+
+    template<typename T>
+    struct Holder : BaseHolder {
+        T value;
+        
+        template<typename U, typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, Holder>>
+        explicit Holder(U&& val) : value(std::forward<U>(val)) {}
+        
+        void print(std::ostream& os) const override {
+            os << value;
+        }
+        
+        std::unique_ptr<BaseHolder> clone() const override {
+            return std::make_unique<Holder>(value);
+        }
+    };
+
+    std::vector<std::unique_ptr<BaseHolder>> items;
+
+public:
+    template<typename... Args>
+    void add(Args&&... args) {
+        (emplace_one(std::forward<Args>(args)), ...);
+    }
+
+    void print(std::ostream& os = std::cout) const {
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (items[i]) {
+                items[i]->print(os);
+                if (i != items.size() - 1) os << ", ";
+            }
+        }
+        os << '\n';
+    }
+
+    size_t size() const { return items.size(); }
+    bool empty() const { return items.empty(); }
+    void reserve(size_t n) { items.reserve(n); }
+    size_t capacity() const { return items.capacity(); }
+
+    template<typename T>
+    T& get(size_t idx) {
+        if (idx >= items.size()) throw std::out_of_range("Bad index");
+        auto* h = dynamic_cast<Holder<T>*>(items[idx].get());
+        if (!h) throw std::bad_cast();
+        return h->value;
+    }
+
+    UniversalPrinter() = default;
+    ~UniversalPrinter() = default;
+    
+    UniversalPrinter(const UniversalPrinter& other) {
+        items.reserve(other.size());
+        for (const auto& item : other.items) {
+            items.push_back(item ? item->clone() : nullptr);
+        }
+    }
+    
+    UniversalPrinter& operator=(const UniversalPrinter& other) {
+        if (this != &other) {
+            UniversalPrinter temp(other);
+            swap(temp);
+        }
+        return *this;
+    }
+    
+    UniversalPrinter(UniversalPrinter&&) noexcept = default;
+    UniversalPrinter& operator=(UniversalPrinter&&) noexcept = default;
+    
+    void swap(UniversalPrinter& other) noexcept {
+        items.swap(other.items);
+    }
+
+private:
+    template<typename T>
+    void emplace_one(T&& arg) {
+        using DecayedT = std::decay_t<T>;
+        items.push_back(std::make_unique<Holder<DecayedT>>(std::forward<T>(arg)));
+    }
+};
+
+template<typename... Args>
+void printAll(Args&&... args) {
+    (std::cout << ... << std::forward<Args>(args)) << '\n';
+}
+
+int main() {
+    UniversalPrinter printer;
+    printer.add(42, "hello", 3.14, std::string{"world"});
+    printer.print();
+
+    int x = 10;
+    printer.add(x, std::move(x));
+    printer.print();
+
+    printAll("Direct:", 1, 2, 3, '!');
+
+    return 0;
+}
