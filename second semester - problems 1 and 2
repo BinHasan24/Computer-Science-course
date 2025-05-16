@@ -1,0 +1,204 @@
+#ifndef MY_DEQUE_H
+#define MY_DEQUE_H
+
+#include <algorithm>
+#include <stdexcept>
+
+template <typename T>
+class Deque {
+private:
+    static const size_t CHUNK_SIZE = 64;
+    static const size_t INITIAL_MAP_SIZE = 8;
+
+    T** map;
+    size_t mapSize;
+    size_t start_block;
+    size_t startIdx;
+    size_t end_block;
+    size_t endIdx;
+    size_t elemCount;
+
+    void resize_map(size_t newSize) {
+        T** new_map = new T*[newSize]();
+        size_t blocks_count = end_block - start_block + 1;
+        size_t offset = (newSize - blocks_count) / 2;
+
+        for (size_t i = 0; i < blocks_count; ++i) {
+            new_map[offset + i] = map[start_block + i];
+        }
+
+        delete[] map;
+        map = new_map;
+        start_block = offset;
+        end_block = offset + blocks_count - 1;
+        mapSize = newSize;
+    }
+
+    void maybe_expand() {
+        if (start_block == 0 || end_block == mapSize - 1) {
+            resize_map(mapSize * 2);
+        }
+    }
+
+public:
+    Deque() : 
+        map(new T*[INITIAL_MAP_SIZE]()),
+        mapSize(INITIAL_MAP_SIZE),
+        start_block(INITIAL_MAP_SIZE/2),
+        startIdx(0),
+        end_block(INITIAL_MAP_SIZE/2),
+        endIdx(0),
+        elemCount(0) 
+    {
+        map[start_block] = new T[CHUNK_SIZE];
+    }
+
+    ~Deque() {
+        for (size_t i = start_block; i <= end_block; ++i) {
+            delete[] map[i];
+        }
+        delete[] map;
+    }
+
+    Deque(const Deque& other) : 
+        map(new T*[other.mapSize]()),
+        mapSize(other.mapSize),
+        start_block(other.start_block),
+        startIdx(other.startIdx),
+        end_block(other.end_block),
+        endIdx(other.endIdx),
+        elemCount(other.elemCount) 
+    {
+        for (size_t i = start_block; i <= end_block; ++i) {
+            map[i] = new T[CHUNK_SIZE];
+            std::copy(other.map[i], other.map[i] + CHUNK_SIZE, map[i]);
+        }
+    }
+
+    Deque& operator=(const Deque& other) {
+        if (this != &other) {
+            Deque temp(other);
+            std::swap(map, temp.map);
+            std::swap(mapSize, temp.mapSize);
+            std::swap(start_block, temp.start_block);
+            std::swap(startIdx, temp.startIdx);
+            std::swap(end_block, temp.end_block);
+            std::swap(endIdx, temp.endIdx);
+            std::swap(elemCount, temp.elemCount);
+        }
+        return *this;
+    }
+
+    void push_back(const T& value) {
+        if (endIdx == CHUNK_SIZE) {
+            maybe_expand();
+            ++end_block;
+            map[end_block] = new T[CHUNK_SIZE];
+            endIdx = 0;
+        }
+        map[end_block][endIdx++] = value;
+        ++elemCount;
+    }
+
+    void push_front(const T& value) {
+        if (startIdx == 0) {
+            maybe_expand();
+            --start_block;
+            map[start_block] = new T[CHUNK_SIZE];
+            startIdx = CHUNK_SIZE;
+        }
+        map[start_block][--startIdx] = value;
+        ++elemCount;
+    }
+
+    void pop_back() {
+        if (empty()) {
+            throw std::out_of_range("Deque is empty");
+        }
+        if (endIdx == 0) {
+            delete[] map[end_block];
+            --end_block;
+            endIdx = CHUNK_SIZE;
+        }
+        --endIdx;
+        --elemCount;
+    }
+
+    void pop_front() {
+        if (empty()) {
+            throw std::out_of_range("Deque is empty");
+        }
+        if (startIdx == CHUNK_SIZE - 1) {
+            delete[] map[start_block];
+            ++start_block;
+            startIdx = 0;
+        } else {
+            ++startIdx;
+        }
+        --elemCount;
+    }
+
+    T& front() {
+        if (empty()) {
+            throw std::out_of_range("Deque is empty");
+        }
+        return map[start_block][startIdx];
+    }
+
+    T& back() {
+        if (empty()) {
+            throw std::out_of_range("Deque is empty");
+        }
+        return map[end_block][endIdx - 1];
+    }
+
+    size_t size() const { return elemCount; }
+    bool empty() const { return elemCount == 0; }
+};
+
+#endif
+
+#ifndef MY_STACK_H
+#define MY_STACK_H
+
+#include "deque.h"
+
+template<typename T, typename Container = Deque<T>>
+class Stack {
+private:
+    Container cont;
+
+public:
+    Stack() = default;
+    Stack(const Stack&) = default;
+    Stack& operator=(const Stack&) = default;
+    ~Stack() = default;
+
+    void push(const T& val) { cont.push_back(val); }
+    
+    void pop() { 
+        if (cont.empty()) {
+            throw std::out_of_range("Stack is empty");
+        }
+        cont.pop_back(); 
+    }
+
+    T& top() { 
+        if (cont.empty()) {
+            throw std::out_of_range("Stack is empty");
+        }
+        return cont.back(); 
+    }
+
+    const T& top() const { 
+        if (cont.empty()) {
+            throw std::out_of_range("Stack is empty");
+        }
+        return cont.back(); 
+    }
+
+    size_t size() const { return cont.size(); }
+    bool empty() const { return cont.empty(); }
+};
+
+#endif
