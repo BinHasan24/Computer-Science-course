@@ -1,0 +1,128 @@
+#include <algorithm>
+#include <cstring>
+#include <stdexcept>
+
+class SimpleString {
+    static constexpr size_t SSO_MAX_SIZE = 15;
+    
+    union {
+        struct {
+            char* ptr;
+            size_t capacity;
+        } heap;
+        char sso[SSO_MAX_SIZE + 1];
+    } storage;
+    
+    size_t length;
+    bool is_sso;
+    
+public:
+    SimpleString() : length(0), is_sso(true) {
+        storage.sso[0] = '\0';
+    }
+    
+    SimpleString(const char* str) : length(strlen(str)) {
+        if (length <= SSO_MAX_SIZE) {
+            is_sso = true;
+            std::copy(str, str + length + 1, storage.sso);
+        } else {
+            is_sso = false;
+            storage.heap.capacity = length + 1;
+            storage.heap.ptr = new char[storage.heap.capacity];
+            std::copy(str, str + length + 1, storage.heap.ptr);
+        }
+    }
+    
+    SimpleString(const SimpleString& other) : length(other.length), is_sso(other.is_sso) {
+        if (is_sso) {
+            std::copy(other.storage.sso, other.storage.sso + SSO_MAX_SIZE + 1, storage.sso);
+        } else {
+            storage.heap.capacity = other.storage.heap.capacity;
+            storage.heap.ptr = new char[storage.heap.capacity];
+            std::copy(other.storage.heap.ptr, other.storage.heap.ptr + length + 1, storage.heap.ptr);
+        }
+    }
+    
+    ~SimpleString() {
+        if (!is_sso) {
+            delete[] storage.heap.ptr;
+        }
+    }
+    
+    SimpleString& operator=(const SimpleString& other) {
+        if (this != &other) {
+            if (!is_sso) {
+                delete[] storage.heap.ptr;
+            }
+            
+            length = other.length;
+            is_sso = other.is_sso;
+            
+            if (is_sso) {
+                std::copy(other.storage.sso, other.storage.sso + SSO_MAX_SIZE + 1, storage.sso);
+            } else {
+                storage.heap.capacity = other.storage.heap.capacity;
+                storage.heap.ptr = new char[storage.heap.capacity];
+                std::copy(other.storage.heap.ptr, other.storage.heap.ptr + length + 1, storage.heap.ptr);
+            }
+        }
+        return *this;
+    }
+    
+    size_t size() const { return length; }
+    
+    size_t capacity() const {
+        return is_sso ? SSO_MAX_SIZE : storage.heap.capacity - 1;
+    }
+    
+    void reserve(size_t new_capacity) {
+        if (new_capacity <= capacity()) return;
+        
+        if (is_sso) {
+            char* new_ptr = new char[new_capacity + 1];
+            std::copy(storage.sso, storage.sso + length + 1, new_ptr);
+            storage.heap.ptr = new_ptr;
+            storage.heap.capacity = new_capacity + 1;
+            is_sso = false;
+        } else {
+            char* new_ptr = new char[new_capacity + 1];
+            std::copy(storage.heap.ptr, storage.heap.ptr + length + 1, new_ptr);
+            delete[] storage.heap.ptr;
+            storage.heap.ptr = new_ptr;
+            storage.heap.capacity = new_capacity + 1;
+        }
+    }
+    
+    void add(char c) {
+        if (length == capacity()) {
+            reserve(capacity() == 0 ? 15 : capacity() * 2);
+        }
+        
+        if (is_sso) {
+            storage.sso[length] = c;
+            storage.sso[length + 1] = '\0';
+        } else {
+            storage.heap.ptr[length] = c;
+            storage.heap.ptr[length + 1] = '\0';
+        }
+        length++;
+    }
+    
+    char& operator[](size_t index) {
+        if (index >= length) {
+            throw std::out_of_range("Index out of range");
+        }
+        return is_sso ? storage.sso[index] : storage.heap.ptr[index];
+    }
+    
+    const char& operator[](size_t index) const {
+        if (index >= length) {
+            throw std::out_of_range("Index out of range");
+        }
+        return is_sso ? storage.sso[index] : storage.heap.ptr[index];
+    }
+    
+    const char* c_str() const {
+        return is_sso ? storage.sso : storage.heap.ptr;
+    }
+};
