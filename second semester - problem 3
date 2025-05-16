@@ -1,0 +1,145 @@
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <initializer_list>
+#include <type_traits>
+#include <utility>
+
+template <typename T, size_t Rows, size_t Cols>
+class Matrix {
+private:
+    std::unique_ptr<T[]> data_;
+
+public:
+    // Rule of Five
+    Matrix() : data_(std::make_unique<T[]>(Rows * Cols)) {}
+    
+    Matrix(std::initializer_list<std::initializer_list<T>> init) : Matrix() {
+        if (init.size() != Rows) {
+            throw std::runtime_error("Wrong number of rows in initializer list");
+        }
+
+        size_t i = 0;
+        for (const auto& row : init) {
+            if (row.size() != Cols) {
+                throw std::runtime_error("Wrong number of columns in initializer list");
+            }
+            for (const auto& val : row) {
+                data_[i++] = val;
+            }
+        }
+    }
+
+    ~Matrix() = default;
+    
+    Matrix(const Matrix& other) : Matrix() {
+        std::copy(other.data_.get(), other.data_.get() + Rows * Cols, data_.get());
+    }
+    
+    Matrix(Matrix&& other) noexcept = default;
+    
+    Matrix& operator=(const Matrix& other) {
+        if (this == &other) return *this;
+        std::copy(other.data_.get(), other.data_.get() + Rows * Cols, data_.get());
+        return *this;
+    }
+    
+    Matrix& operator=(Matrix&& other) noexcept = default;
+
+    // Element Access
+    T& operator()(size_t row, size_t col) {
+        if (row >= Rows || col >= Cols) {
+            throw std::out_of_range("Matrix access out of bounds");
+        }
+        return data_[row * Cols + col];
+    }
+
+    const T& operator()(size_t row, size_t col) const {
+        if (row >= Rows || col >= Cols) {
+            throw std::out_of_range("Matrix access out of bounds");
+        }
+        return data_[row * Cols + col];
+    }
+
+    // Matrix Operations
+    Matrix operator+(const Matrix& other) const {
+        Matrix result;
+        for (size_t i = 0; i < Rows * Cols; ++i) {
+            result.data_[i] = data_[i] + other.data_[i];
+        }
+        return result;
+    }
+
+    Matrix operator-(const Matrix& other) const {
+        Matrix result;
+        for (size_t i = 0; i < Rows * Cols; ++i) {
+            result.data_[i] = data_[i] - other.data_[i];
+        }
+        return result;
+    }
+
+    template <size_t OtherCols>
+    Matrix<T, Rows, OtherCols> operator*(const Matrix<T, Cols, OtherCols>& other) const {
+        Matrix<T, Rows, OtherCols> result;
+        for (size_t i = 0; i < Rows; ++i) {
+            for (size_t j = 0; j < OtherCols; ++j) {
+                T sum = 0;
+                for (size_t k = 0; k < Cols; ++k) {
+                    sum += (*this)(i, k) * other(k, j);
+                }
+                result(i, j) = sum;
+            }
+        }
+        return result;
+    }
+
+    // Utility Functions
+    constexpr size_t rows() const { return Rows; }
+    constexpr size_t cols() const { return Cols; }
+    constexpr size_t size() const { return Rows * Cols; }
+
+    void print() const {
+        for (size_t i = 0; i < Rows; ++i) {
+            for (size_t j = 0; j < Cols; ++j) {
+                std::cout << (*this)(i, j) << " ";
+            }
+            std::cout << "\n";
+        }
+    }
+
+    friend auto transpose<T, Rows, Cols>(const Matrix<T, Rows, Cols>& matrix);
+    friend auto transpose<T, Rows, Cols>(Matrix<T, Rows, Cols>&& matrix);
+};
+
+// Transpose Functions
+template <typename T, size_t Rows, size_t Cols>
+auto transpose(const Matrix<T, Rows, Cols>& matrix) {
+    Matrix<T, Cols, Rows> result;
+    for (size_t i = 0; i < Rows; ++i) {
+        for (size_t j = 0; j < Cols; ++j) {
+            result(j, i) = matrix(i, j);
+        }
+    }
+    return result;
+}
+
+template <typename T, size_t Rows, size_t Cols>
+auto transpose(Matrix<T, Rows, Cols>&& matrix) {
+    Matrix<T, Cols, Rows> result;
+    for (size_t i = 0; i < Rows; ++i) {
+        for (size_t j = 0; j < Cols; ++j) {
+            result(j, i) = std::move(matrix(i, j));
+        }
+    }
+    return result;
+}
+
+// Trace Lambda
+auto trace = []<typename T, size_t N>(const Matrix<T, N, N>& m) {
+    static_assert(N > 0, "Matrix must be square!");
+    T sum = 0;
+    for (size_t i = 0; i < N; ++i) {
+        sum += m(i, i);
+    }
+    return sum;
+};
