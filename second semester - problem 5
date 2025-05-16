@@ -1,0 +1,138 @@
+#include <utility>
+#include <stdexcept>
+#include <functional>
+
+template <typename T, typename Deleter = std::default_delete<T>>
+class SharedPtr {
+private:
+    struct ControlBlock {
+        T* data;
+        size_t refCount;
+        Deleter deleter;
+
+        template <typename Del>
+        ControlBlock(T* ptr, Del&& del) 
+            : data(ptr), 
+              refCount(1), 
+              deleter(std::forward<Del>(del)) {}
+
+        ~ControlBlock() {
+            if (data) {
+                deleter(data);
+            }
+        }
+    };
+
+    ControlBlock* block;
+
+    void cleanup() {
+        if (!block) return;
+        
+        if (--block->refCount == 0) {
+            delete block;
+        }
+        block = nullptr;
+    }
+
+public:
+    SharedPtr() noexcept : block(nullptr) {}
+
+    explicit SharedPtr(T* ptr) : block(ptr ? new ControlBlock(ptr, Deleter{}) : nullptr) {}
+
+    template <typename Del>
+    SharedPtr(T* ptr, Del&& del) 
+        : block(ptr ? new ControlBlock(ptr, std::forward<Del>(del)) : nullptr) {}
+
+    SharedPtr(const SharedPtr& other) noexcept 
+        : block(other.block) {
+        if (block) ++block->refCount;
+    }
+
+    SharedPtr(SharedPtr&& other) noexcept 
+        : block(other.block) {
+        other.block = nullptr;
+    }
+
+    ~SharedPtr() { cleanup(); }
+
+    SharedPtr& operator=(const SharedPtr& rhs) noexcept {
+        if (this != &rhs) {
+            cleanup();
+            block = rhs.block;
+            if (block) ++block->refCount;
+        }
+        return *this;
+    }
+
+    SharedPtr& operator=(SharedPtr&& rhs) noexcept {
+        if (this != &rhs) {
+            cleanup();
+            block = rhs.block;
+            rhs.block = nullptr;
+        }
+        return *this;
+    }
+
+    T* get() const noexcept { return block ? block->data : nullptr; }
+    T& operator*() const { return *get(); }
+    T* operator->() const noexcept { return get(); }
+    explicit operator bool() const noexcept { return get() != nullptr; }
+
+    void reset(T* ptr = nullptr) {
+        cleanup();
+        if (ptr) {
+            block = new ControlBlock(ptr, Deleter{});
+        }
+    }
+
+    template <typename Del>
+    void reset(T* ptr, Del&& del) {
+        cleanup();
+        if (ptr) {
+            block = new ControlBlock(ptr, std::forward<Del>(del));
+        }
+    }
+
+    size_t use_count() const noexcept { 
+        return block ? block->refCount : 0; 
+    }
+
+    size_t size() const noexcept { return block ? 1 : 0; }
+    size_t capacity() const noexcept { return block ? 1 : 0; }
+    void reserve(size_t) noexcept { }
+
+    void add(const T& value) {
+        if (block) {
+            throw std::runtime_error("SharedPtr already contains a value");
+        }
+        reset(new T(value));
+    }
+
+    T& operator[](size_t index) {
+        if (index != 0 || !block) {
+            throw std::out_of_range("SharedPtr index out of bounds");
+        }
+        return *block->data;
+    }
+
+    const T& operator[](size_t index) const {
+        if (index != 0 || !block) {
+            throw std::out_of_range("SharedPtr index out of bounds");
+        }
+        return *block->data;
+    }
+
+    void swap(SharedPtr& other) noexcept {
+        std::swap(block, other.block);
+    }
+};
+
+template <typename T, typename... Args>
+SharedPtr<T> make_shared(Args&&... args) {
+    return SharedPtr<T>(new T(std::forward<Args>(args)...));
+}
+
+template <typename T>
+void swap(SharedPtr<T>& lhs, SharedPtr<T>& rhs) noexcept {
+    lhs.swap(rhs);
+}
